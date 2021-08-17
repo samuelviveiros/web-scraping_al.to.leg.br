@@ -1,12 +1,7 @@
-#!/usr/bin/env python
-"""Provides Scraper and LegislativeAssemblyScraper classes
+"""Provides a web scraping base class called Scraper
 
-Scraper is a generic class for web scraping, powered by
+Scraper is a base class for web scraping, powered by
 'beautifulsoup4' and 'requests' modules.
-
-LegislativeAssemblyScraper is a specialized Scraper class designed
-specifically to scrap data related to the Assembleia Legislativa do
-Tocantins (Brazil)'s transparency and accountability.
 """
 
 import json
@@ -37,7 +32,11 @@ def mergeIf(dict1, dict2):
 
 
 class Scraper:
-    """Generic class for web scraping"""
+    """Base class for web scraping
+
+    This class is intended to be extended and should not
+    be created directly.
+    """
 
     DEFAULT_TIMEOUT = 60.0  # Given in seconds
 
@@ -122,9 +121,6 @@ class Scraper:
         self.validate_response()
         self.soup = BeautifulSoup(self.response.text, 'lxml')
 
-    def start_scraping(self):
-        self.is_scrap_done = False
-
     def get_result(self):
         if not self.is_scrap_done:
             raise Exception('Web scraping is not done yet')
@@ -138,117 +134,6 @@ class Scraper:
         with open(filename, 'w') as fd:
             fd.write(self.get_json())
 
-
-class LegislativeAssemblyScraper(Scraper):
-    """Page scraper for Assembleia Legislativa do Tocantins
-
-    Page target: Transparência -> Verbas Indenizatórias
-    URL: https://al.to.leg.br/transparencia/verbaIndenizatoria
-    """
-    def _get_years(self):
-        selector = 'select#verbaindenizatoria_ano option'
-        return [
-            option['value']
-            for option in self.soup.select(selector)
-            if option['value']
-        ]
-
-    def _get_months(self):
-        selector = 'select#verbaindenizatoria_mes option'
-        return [
-            option['value']
-            for option in self.soup.select(selector)
-            if option['value']
-        ]
-
-    def _get_politicians(self):
-        selector = 'select#transparencia_parlamentar option'
-        return [
-            option['value']
-            for option in self.soup.select(selector)
-            if option['value']
-        ]
-
-    def _get_politician_reports(self):
-        selector = 'td a'
-        return [
-            anchor['href']
-            for anchor in self.soup.select(selector)
-            if anchor['href']
-        ]
-
-    def _extract_input_data(self, v=False, vv=False):
-        if v: print('')
-        if v: print('[*] Fetching page...', end='')
-        self.fetch()
-        if v: print('OK', '\n')
-
-        if v: print('[*] Parsing result...', end='')
-        self.parse()
-        if v: print('OK', '\n')
-
-        self.data = {
-            'input_data': {
-                'years': self._get_years(),
-                'months': self._get_months(),
-                'politicians': self._get_politicians(),
-            },
-        }
-
-        if vv:
-            print('[+] Input data:', '\n')
-            print(self.data['input_data'])
-
-        if v: print('')
-
-    def _extract_politician_data(self, year, month, politician, v=False, vv=False):
-        if v: print(f'[*] Fetching reports for {politician} ({year}/{month})...', end='')
-        self.fetch(method='POST', data={
-            'transparencia.tipoTransparencia.codigo': '14',
-            'transparencia.ano': year,
-            'transparencia.mes': month,
-            'transparencia.parlamentar': politician,  # if omitted, it'll bring everybody
-        })
-
-        self.parse()
-
-        self.data['output_data'] = self.data.get('output_data', {})
-        self.data['output_data'][year] = self.data['output_data'].get(year, {})
-        self.data['output_data'][year][month] = self.data['output_data'][year].get(month, [])
-        self.data['output_data'][year][month].append({
-            'politician': politician,
-            'reports': self._get_politician_reports(),
-        })
-
-        if v: print('OK')
-
-    def start_scraping(self, v=False, vv=False):
-        super().start_scraping()
-
-        self._extract_input_data(v=v, vv=vv)
-
-        # _TODO_ This code is generating about 1500 requests. Refactor code for performance.
-        for year in self.data['input_data']['years']:
-            for month in self.data['input_data']['months']:
-                for politician in self.data['input_data']['politicians']:
-                    try:
-                        self._extract_politician_data(year, month, politician, v=v, vv=vv)
-                    except Exception as e:
-                        if v:
-                            print(f'[-] Error fetching reports for {politician} ({year}/{month}) :(')
-
-        self.is_scrap_done = True
-
-
-def _main():
-    url = 'https://al.to.leg.br/transparencia/verbaIndenizatoria'
-    la = LegislativeAssemblyScraper(url)
-    la.start_scraping(v=True, vv=True)
-    if la.is_scrap_done:
-        #print(la.get_result())
-        #print(la.get_json())
-        la.save_as_json_file('output.json')
-
-
-if __name__ == '__main__':
-    _main()
+    def start_scraping(self):
+        """Override me"""
+        self.is_scrap_done = False
