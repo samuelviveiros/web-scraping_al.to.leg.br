@@ -1,7 +1,6 @@
 """Provides a web scraping base class called Scraper
 
-Scraper is a base class for web scraping, powered by
-'beautifulsoup4' and 'requests' modules.
+It is powered by 'beautifulsoup4' and 'requests' modules.
 """
 
 import json
@@ -51,7 +50,7 @@ class Scraper:
 
         self.response = None
         self.soup = None
-        self.is_scrap_done = False
+        self.is_scraping_done = False
 
         # Put all the extracted data in this dictionary
         self.data = {}
@@ -122,7 +121,7 @@ class Scraper:
         self.soup = BeautifulSoup(self.response.text, 'lxml')
 
     def get_result(self):
-        if not self.is_scrap_done:
+        if not self.is_scraping_done:
             raise Exception('Web scraping is not done yet')
 
         return self.data
@@ -135,5 +134,8 @@ class Scraper:
             fd.write(self.get_json())
 
     def start_scraping(self):
-        """Override me"""
-        self.is_scrap_done = False
+        """This is where all the scraping should start
+
+        This method must be overridden in a subclass
+        """
+        self.is_scraping_done = False

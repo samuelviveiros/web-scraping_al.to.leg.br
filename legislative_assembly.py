@@ -29,7 +29,7 @@ class LegislativeAssemblyScraper(Scraper):
     Page target: Transparência -> Verbas Indenizatórias
     URL: https://al.to.leg.br/transparencia/verbaIndenizatoria
     """
-    def _get_years(self):
+    def _extract_years(self):
         selector = 'select#verbaindenizatoria_ano option'
         return [
             option['value']
@@ -37,7 +37,7 @@ class LegislativeAssemblyScraper(Scraper):
             if option['value']
         ]
 
-    def _get_months(self):
+    def _extract_months(self):
         selector = 'select#verbaindenizatoria_mes option'
         return [
             option['value']
@@ -45,7 +45,7 @@ class LegislativeAssemblyScraper(Scraper):
             if option['value']
         ]
 
-    def _get_politicians(self):
+    def _extract_politicians(self):
         selector = 'select#transparencia_parlamentar option'
         return [
             option['value']
@@ -53,15 +53,7 @@ class LegislativeAssemblyScraper(Scraper):
             if option['value']
         ]
 
-    def _get_politician_reports(self):
-        selector = 'td a'
-        return [
-            anchor['href']
-            for anchor in self.soup.select(selector)
-            if anchor['href']
-        ]
-
-    def _extract_input_data(self, v=False, vv=False):
+    def _extract_form_data(self, v=False, vv=False):
         if v: print('')
         if v: print('[*] Fetching page...', end='')
         self.fetch()
@@ -72,63 +64,113 @@ class LegislativeAssemblyScraper(Scraper):
         if v: print('OK', '\n')
 
         self.data = {
-            'input_data': {
-                'years': self._get_years(),
-                'months': self._get_months(),
-                'politicians': self._get_politicians(),
+            'form_data': {
+                'years': self._extract_years(),
+                'months': self._extract_months(),
+                'politicians': self._extract_politicians(),
             },
         }
 
         if vv:
             print('[+] Input data:', '\n')
-            print(self.data['input_data'])
+            print(self.data['form_data'])
 
         if v: print('')
 
-    def _extract_politician_data(self, year, month, politician, v=False, vv=False):
-        if v: print(f'[*] Fetching reports for {politician} ({year}/{month})...', end='')
-        self.fetch(method='POST', data={
-            'transparencia.tipoTransparencia.codigo': '14',
-            'transparencia.ano': year,
-            'transparencia.mes': month,
-            'transparencia.parlamentar': politician,  # if omitted, it'll bring everybody
-        })
+    def _extract_report_urls(self, year, month, politician=None):
+        if politician:
+            selector = 'td a'
+            self.data['query_result'][year][month].append({
+                'politician': politician,
+                'reports': [
+                    anchor['href']
+                    for anchor in self.soup.select(selector)
+                    if anchor['href']
+                ],
+            })
+        else:
+            pass
 
-        self.parse()
+    def _query_indemnity_costs(self, years, months, politicians=None, v=False, vv=False):
+        """Query indemnity costs ("Consultar verbas indenizatórias")
 
-        self.data['output_data'] = self.data.get('output_data', {})
-        self.data['output_data'][year] = self.data['output_data'].get(year, {})
-        self.data['output_data'][year][month] = self.data['output_data'][year].get(month, [])
-        self.data['output_data'][year][month].append({
-            'politician': politician,
-            'reports': self._get_politician_reports(),
-        })
+        Arguments:
+        years -- a list containing years
+        months -- a list containing months
+        politicians -- a list containing politicians (not required)
+        v -- verbosity
+        vv -- more verbosity
+        """
+        self.data['query_result'] = self.data.get('query_result', {})
+        params = { 'transparencia.tipoTransparencia.codigo': '14' }
 
-        if v: print('OK')
+        for year in years:
+            self.data['query_result'][year] = self.data['query_result'].get(year, {})
 
-    def start_scraping(self, v=False, vv=False):
-        super().start_scraping()
+            for month in months:
+                self.data['query_result'][year][month] = self.data['query_result'][year].get(month, [])
 
-        self._extract_input_data(v=v, vv=vv)
+                params.update({
+                    'transparencia.ano': year,
+                    'transparencia.mes': month,
+                })
 
-        # _TODO_ This code is generating about 1500 requests. Refactor code for performance.
-        for year in self.data['input_data']['years']:
-            for month in self.data['input_data']['months']:
-                for politician in self.data['input_data']['politicians']:
+                if politicians:
+                    for politician in politicians:
+                        try:
+                            if v: print(f'[*] Fetching reports for {politician} ({year}/{month})...', end='')
+
+                            params.update({ 'transparencia.parlamentar': politician })
+
+                            self.fetch(method='POST', data=params)
+                            self.parse()
+
+                            self._extract_report_urls(year, month, politician)
+
+                            if v: print('OK')
+                        except Exception as e:
+                            if v:
+                                print(f'[-] Error fetching reports for {politician} ({year}/{month}) :(')
+                else:
                     try:
-                        self._extract_politician_data(year, month, politician, v=v, vv=vv)
+                        if v: print(f'[*] Fetching reports for {year}/{month}...', end='')
+
+                        self.fetch(method='POST', data=params)
+                        self.parse()
+
+                        self._extract_report_urls(year, month)
+
+                        if v: print('OK')
                     except Exception as e:
                         if v:
-                            print(f'[-] Error fetching reports for {politician} ({year}/{month}) :(')
+                            print(f'[-] Error fetching reports for {year}/{month} :(')
 
-        self.is_scrap_done = True
+    def start_scraping(self, v=False, vv=False):
+        """This is where all the scraping should start
+
+        Arguments:
+        v -- verbosity
+        vv -- more verbosity
+        """
+        super().start_scraping()
+
+        self._extract_form_data(v=v, vv=vv)
+
+        self._query_indemnity_costs(
+            years=self.data['form_data']['years'],
+            months=self.data['form_data']['months'],
+            politicians=self.data['form_data']['politicians'],
+            v=v, vv=vv
+        )
+
+        self.is_scraping_done = True
 
 
 def _main():
     url = 'https://al.to.leg.br/transparencia/verbaIndenizatoria'
     la = LegislativeAssemblyScraper(url)
     la.start_scraping(v=True, vv=True)
-    if la.is_scrap_done:
+    if la.is_scraping_done:
         #print(la.get_result())
         #print(la.get_json())
         la.save_as_json_file('output.json')
