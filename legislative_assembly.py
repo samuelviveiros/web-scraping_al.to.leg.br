@@ -79,17 +79,34 @@ class LegislativeAssemblyScraper(Scraper):
 
     def _extract_report_urls(self, year, month, politician=None):
         if politician:
-            selector = 'td a'
-            self.data['query_result'][year][month].append({
-                'politician': politician,
-                'reports': [
-                    anchor['href']
-                    for anchor in self.soup.select(selector)
-                    if anchor['href']
-                ],
-            })
+            for a in self.soup.select('td a'):
+                if not a.get('href'):
+                    continue
+
+                self.data['query_result'][year][month][politician].append({
+                    'description': str(a.string).strip(),
+                    'href': a.get('href', ''),
+                })
         else:
-            pass
+            for h2 in self.soup.select('h2.my-2'):
+                if not h2.string:
+                    continue
+
+                politician = str(h2.string)
+                self.data['query_result'][year][month][politician] = self.data['query_result'][year][month].get(politician, [])
+
+                table = h2.find_next_sibling('table')
+                if not table:
+                    continue
+
+                for a in table.select('td a'):
+                    if not a.get('href'):
+                        continue
+
+                    self.data['query_result'][year][month][politician].append({
+                        'description': str(a.string).strip(),
+                        'href': a.get('href', ''),
+                    })
 
     def _query_indemnity_costs(self, years, months, politicians=None, v=False, vv=False):
         """Query indemnity costs ("Consultar verbas indenizatórias")
@@ -108,7 +125,7 @@ class LegislativeAssemblyScraper(Scraper):
             self.data['query_result'][year] = self.data['query_result'].get(year, {})
 
             for month in months:
-                self.data['query_result'][year][month] = self.data['query_result'][year].get(month, [])
+                self.data['query_result'][year][month] = self.data['query_result'][year].get(month, {})
 
                 params.update({
                     'transparencia.ano': year,
@@ -117,6 +134,8 @@ class LegislativeAssemblyScraper(Scraper):
 
                 if politicians:
                     for politician in politicians:
+                        self.data['query_result'][year][month][politician] = self.data['query_result'][year][month].get(politician, [])
+
                         try:
                             if v: print(f'[*] Fetching reports for {politician} ({year}/{month})...', end='')
 
@@ -157,9 +176,18 @@ class LegislativeAssemblyScraper(Scraper):
         self._extract_form_data(v=v, vv=vv)
 
         self._query_indemnity_costs(
-            years=self.data['form_data']['years'],
-            months=self.data['form_data']['months'],
-            politicians=self.data['form_data']['politicians'],
+            # years=self.data['form_data']['years'],
+            # months=self.data['form_data']['months'],
+            # politicians=self.data['form_data']['politicians'],
+
+            # years=['2021'],
+            # months=['1', '2'],
+            # politicians=self.data['form_data']['politicians'][:3],
+
+            years=['2019'],
+            months=['1'],
+            #politicians=self.data['form_data']['politicians'],
+
             v=v, vv=vv
         )
 
