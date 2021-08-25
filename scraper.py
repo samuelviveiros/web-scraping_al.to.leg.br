@@ -92,6 +92,7 @@ class Scraper:
 
             kwargs.setdefault('timeout', Scraper.DEFAULT_TIMEOUT)
             kwargs.setdefault('headers', self.get_headers())
+            kwargs.setdefault('verify', False)  # Bypass SSL certificate verification
 
             if method == 'GET':
                 self.response = requests.get(self.url, **kwargs)

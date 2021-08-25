@@ -53,29 +53,60 @@ class LegislativeAssemblyScraper(Scraper):
             if option['value']
         ]
 
-    def _extract_form_data(self, v=False, vv=False):
-        if v: print('')
-        if v: print('[*] Fetching page...', end='')
-        self.fetch()
-        if v: print('OK', '\n')
+    def _prepare_to_get_data_from_form(self):
+        """Initializes a dict to store data from the HTML form"""
 
-        if v: print('[*] Parsing result...', end='')
+        # Fetches the page for the first
+        # time just to get the list of years
+        self.fetch()
         self.parse()
-        if v: print('OK', '\n')
 
         self.data = {
-            'form_data': {
-                'years': self._extract_years(),
-                'months': self._extract_months(),
-                'politicians': self._extract_politicians(),
-            },
+            'formData': {},
         }
 
-        if vv:
-            print('[+] Input data:', '\n')
-            print(self.data['form_data'])
+        for year in self._extract_years():
+            self.data['formData'].update({
+                year: {
+                    'months': [],
+                    'politicians': [],
+                    'politicianCount': 0,
+                },
+            })
 
-        if v: print('')
+    def _get_params(self):
+        return {
+            'transparencia.tipoTransparencia.codigo': '14',
+            'transparencia.ano': '',
+            'transparencia.mes': '',
+            'transparencia.parlamentar': '',
+        }
+
+    def _extract_data_from_form(self):
+        """For each year, gets the months and politicians"""
+
+        params = self._get_params()
+
+        for year in self.data['formData'].keys():
+            params.update({ 'transparencia.ano': year })
+
+            self.fetch(method='POST', data=params)
+            self.parse()
+
+            months = self._extract_months()
+            politicians = self._extract_politicians()
+
+            self.data['formData'].update({
+                year: {
+                    'months': months,
+                    'politicians': politicians,
+                    'politicianCount': len(politicians),
+                },
+            })
+
+    def _extract_form_data(self, v=False, vv=False):
+        self._prepare_to_get_data_from_form()
+        self._extract_data_from_form()
 
     def _extract_report_urls(self, year, month, politician=None):
         if politician:
@@ -83,7 +114,7 @@ class LegislativeAssemblyScraper(Scraper):
                 if not a.get('href'):
                     continue
 
-                self.data['query_result'][year][month][politician].append({
+                self.data['queryResult'][year][month][politician].append({
                     'description': str(a.string).strip(),
                     'href': a.get('href', ''),
                 })
@@ -93,7 +124,7 @@ class LegislativeAssemblyScraper(Scraper):
                     continue
 
                 politician = str(h2.string)
-                self.data['query_result'][year][month][politician] = self.data['query_result'][year][month].get(politician, [])
+                self.data['queryResult'][year][month][politician] = self.data['queryResult'][year][month].get(politician, [])
 
                 table = h2.find_next_sibling('table')
                 if not table:
@@ -103,7 +134,7 @@ class LegislativeAssemblyScraper(Scraper):
                     if not a.get('href'):
                         continue
 
-                    self.data['query_result'][year][month][politician].append({
+                    self.data['queryResult'][year][month][politician].append({
                         'description': str(a.string).strip(),
                         'href': a.get('href', ''),
                     })
@@ -118,14 +149,14 @@ class LegislativeAssemblyScraper(Scraper):
         v -- verbosity
         vv -- more verbosity
         """
-        self.data['query_result'] = self.data.get('query_result', {})
+        self.data['queryResult'] = self.data.get('queryResult', {})
         params = { 'transparencia.tipoTransparencia.codigo': '14' }
 
         for year in years:
-            self.data['query_result'][year] = self.data['query_result'].get(year, {})
+            self.data['queryResult'][year] = self.data['queryResult'].get(year, {})
 
             for month in months:
-                self.data['query_result'][year][month] = self.data['query_result'][year].get(month, {})
+                self.data['queryResult'][year][month] = self.data['queryResult'][year].get(month, {})
 
                 params.update({
                     'transparencia.ano': year,
@@ -134,7 +165,7 @@ class LegislativeAssemblyScraper(Scraper):
 
                 if politicians:
                     for politician in politicians:
-                        self.data['query_result'][year][month][politician] = self.data['query_result'][year][month].get(politician, [])
+                        self.data['queryResult'][year][month][politician] = self.data['queryResult'][year][month].get(politician, [])
 
                         try:
                             if v: print(f'[*] Fetching reports for {politician} ({year}/{month})...', end='')
@@ -175,21 +206,21 @@ class LegislativeAssemblyScraper(Scraper):
 
         self._extract_form_data(v=v, vv=vv)
 
-        self._query_indemnity_costs(
-            # years=self.data['form_data']['years'],
-            # months=self.data['form_data']['months'],
-            # politicians=self.data['form_data']['politicians'],
+        # self._query_indemnity_costs(
+        #     # years=self.data['formData']['years'],
+        #     # months=self.data['formData']['months'],
+        #     # politicians=self.data['formData']['politicians'],
 
-            # years=['2021'],
-            # months=['1', '2'],
-            # politicians=self.data['form_data']['politicians'][:3],
+        #     # years=['2021'],
+        #     # months=['1', '2'],
+        #     # politicians=self.data['formData']['politicians'][:3],
 
-            years=['2019'],
-            months=['1'],
-            #politicians=self.data['form_data']['politicians'],
+        #     years=['2019'],
+        #     months=['1'],
+        #     politicians=self.data['formData']['politicians'],
 
-            v=v, vv=vv
-        )
+        #     v=v, vv=vv
+        # )
 
         self.is_scraping_done = True
 
