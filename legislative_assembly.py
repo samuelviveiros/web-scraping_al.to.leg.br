@@ -108,9 +108,22 @@ class LegislativeAssemblyScraper(Scraper):
         self._prepare_to_get_data_from_form()
         self._extract_data_from_form()
 
-    def _extract_report_urls(self, year, month, politician=None):
-        if politician:
-            for a in self.soup.select('td a'):
+    def _extract_urls_by_month(self, year, month, politicians=None):
+        for h2 in self.soup.select('h2.my-2'):
+            if not h2.string:
+                continue
+
+            politician = str(h2.string)
+            if politicians and politician not in politicians:
+                continue
+
+            self.data['queryResult'][year][month][politician] = self.data['queryResult'][year][month].get(politician, [])
+
+            table = h2.find_next_sibling('table')
+            if not table:
+                continue
+
+            for a in table.select('td a'):
                 if not a.get('href'):
                     continue
 
@@ -118,119 +131,74 @@ class LegislativeAssemblyScraper(Scraper):
                     'description': str(a.string).strip(),
                     'href': a.get('href', ''),
                 })
-        else:
-            for h2 in self.soup.select('h2.my-2'):
-                if not h2.string:
-                    continue
 
-                politician = str(h2.string)
-                self.data['queryResult'][year][month][politician] = self.data['queryResult'][year][month].get(politician, [])
+    def _extract_urls_by_politician(self, year, month, politician):
+        for a in self.soup.select('td a'):
+            if not a.get('href'):
+                continue
 
-                table = h2.find_next_sibling('table')
-                if not table:
-                    continue
+            self.data['queryResult'][year][month][politician].append({
+                'description': str(a.string).strip(),
+                'href': a.get('href', ''),
+            })
 
-                for a in table.select('td a'):
-                    if not a.get('href'):
-                        continue
-
-                    self.data['queryResult'][year][month][politician].append({
-                        'description': str(a.string).strip(),
-                        'href': a.get('href', ''),
-                    })
-
-    def _query_indemnity_costs(self, years=None, months=None, politicians=None, v=False, vv=False):
+    def _query_indemnity_costs(self, years=None, months=None, politicians=None, fetch_one_by_one=False, v=False, vv=False):
         """Query indemnity costs ("Consultar verbas indenizatórias")
 
         Arguments:
         years -- a list containing years (not required)
         months -- a list containing months (not required)
         politicians -- a list containing politicians (not required)
+        fetch_one_by_one -- if True, makes one request for each
+                            politician (which is not recommended
+                            as the overall completion time will
+                            be long)
         v -- verbosity
         vv -- more verbosity
         """
-        if years is not None and not isinstance(years, (list, tuple)):
-            raise TypeError("'years' must be a list or tuple")
-
-        if months is not None and not isinstance(months, (list, tuple)):
-            raise TypeError("'months' must be a list or tuple")
-
-        if politicians is not None and not isinstance(politicians, (list, tuple)):
-            raise TypeError("'politicians' must be a list or tuple")
-
         if isinstance(years, (list, tuple)):
             years = [str(year) for year in years]
 
         if isinstance(months, (list, tuple)):
             months = [str(month) for month in months]
 
-        is_years_valid = isinstance(years, (list, tuple)) and len(years)
-        is_months_valid = isinstance(months, (list, tuple)) and len(months)
-        is_politicians_valid = isinstance(politicians, (list, tuple)) and len(politicians)
-
         self.data['queryResult'] = self.data.get('queryResult', {})
         params = { 'transparencia.tipoTransparencia.codigo': '14' }
 
         for year in self.data['formData'].keys():
-            if is_years_valid and year not in years:
+            if years and year not in years:
                 continue
             self.data['queryResult'][year] = self.data['queryResult'].get(year, {})
             for month in self.data['formData'][year]['months']:
-                if is_months_valid and month not in months:
+                if months and month not in months:
                     continue
                 self.data['queryResult'][year][month] = self.data['queryResult'][year].get(month, {})
                 params.update({
                     'transparencia.ano': year,
                     'transparencia.mes': month,
                 })
-                for politician in self.data['formData'][year]['politicians']:
-                    if is_politicians_valid and politician not in politicians:
-                        continue
-                    self.data['queryResult'][year][month][politician] = self.data['queryResult'][year][month].get(politician, [])
-                    params.update({ 'transparencia.parlamentar': politician })
+                if fetch_one_by_one:
+                    for politician in self.data['formData'][year]['politicians']:
+                        if politicians and politician not in politicians:
+                            continue
+                        self.data['queryResult'][year][month][politician] = self.data['queryResult'][year][month].get(politician, [])
+                        params.update({ 'transparencia.parlamentar': politician })
+                        try:
+                            self.fetch(method='POST', data=params)
+                            self.parse()
+                        except:
+                            pass
+                        self._extract_urls_by_politician(year, month, politician)
+                else:
+                    # Passing an empty string will bring URLs for all
+                    # politicians according to the given year and month
+                    params.update({ 'transparencia.parlamentar': '' })
                     try:
                         self.fetch(method='POST', data=params)
                         self.parse()
                     except:
                         pass
-                    self._extract_report_urls(year, month, politician)
-
-
-        # self.data['queryResult'] = self.data.get('queryResult', {})
-        # params = { 'transparencia.tipoTransparencia.codigo': '14' }
-
-        # for year in years:
-        #     self.data['queryResult'][year] = self.data['queryResult'].get(year, {})
-
-        #     for month in months:
-        #         self.data['queryResult'][year][month] = self.data['queryResult'][year].get(month, {})
-
-        #         params.update({
-        #             'transparencia.ano': year,
-        #             'transparencia.mes': month,
-        #         })
-
-        #         if politicians:
-        #             for politician in politicians:
-        #                 self.data['queryResult'][year][month][politician] = self.data['queryResult'][year][month].get(politician, [])
-
-        #                 params.update({ 'transparencia.parlamentar': politician })
-
-        #                 try:
-        #                     self.fetch(method='POST', data=params)
-        #                     self.parse()
-        #                 except:
-        #                     pass
-
-        #                 self._extract_report_urls(year, month, politician)
-        #         else:
-        #             try:
-        #                 self.fetch(method='POST', data=params)
-        #                 self.parse()
-
-        #                 self._extract_report_urls(year, month)
-        #             except Exception:
-        #                 pass
+                    self._extract_urls_by_month(year, month, politicians)
 
     def start_scraping(self, v=False, vv=False):
         """This is where all the scraping should start
@@ -249,8 +217,9 @@ class LegislativeAssemblyScraper(Scraper):
             # politicians=self.data['formData']['2019']['politicians'][:5],
 
             years=[2019],
-            months=[2],
+            months=[3],
             politicians=self.data['formData']['2019']['politicians'][:5],
+            fetch_one_by_one=True,
 
             v=v, vv=vv
         )
